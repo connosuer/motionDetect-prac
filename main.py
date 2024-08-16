@@ -18,14 +18,10 @@ def initialize_pygame():
         return None
     return pygame.mixer.Sound(sound_file)
 
-def beep_alarm(sound, alarm_mode): 
-    for _ in range(5): 
-        if not alarm_mode(): 
-            break 
-        print("ALARM")
-        if sound:
-            sound.play()
-        pygame.time.wait(1000)
+def play_alarm(sound):
+    print("ALARM")
+    if sound:
+        sound.play()
 
 def send_telegram_message(bot_token, chat_id, message):
     try:
@@ -36,7 +32,7 @@ def send_telegram_message(bot_token, chat_id, message):
         }
         response = requests.post(url, json=payload)
         response.raise_for_status()
-        print("Telegram notification sent successfully")
+        print(f"Telegram notification sent: {message}")
     except Exception as e:
         print(f"Failed to send Telegram notification: {e}")
 
@@ -65,9 +61,10 @@ def main():
     start_frame = cv2.GaussianBlur(start_frame, (21, 21), 0)
 
     alarm_mode_active = True
-    alarm_counter = 0
-    last_notification_time = 0
-    notification_cooldown = 60  # 1 minute cooldown
+    motion_detected = False
+    last_motion_time = time.time()
+    motion_stop_notified = False
+    notification_cooldown = 60  # 1 minute cooldown for motion detection messages
 
     try:
         while True: 
@@ -82,27 +79,35 @@ def main():
                 threshold = cv2.threshold(difference, 25, 255, cv2.THRESH_BINARY)[1]
                 start_frame = frame_bw
 
-                if threshold.sum() > 300: 
-                    alarm_counter += 1
-                else: 
-                    alarm_counter = max(0, alarm_counter - 1)
+                motion = threshold.sum() > 300
+
+                current_time = time.time()
+
+                if motion:
+                    last_motion_time = current_time
+                    if not motion_detected:
+                        motion_detected = True
+                        motion_stop_notified = False
+                        print("Motion detected!")
+                        play_alarm(alarm_sound)
+                        threading.Thread(target=send_telegram_message, 
+                                         args=(bot_token, chat_id, "Motion detected in your room!")).start()
+                elif motion_detected and (current_time - last_motion_time) > 30 and not motion_stop_notified:
+                    motion_detected = False
+                    motion_stop_notified = True
+                    print("No motion for 30 seconds.")
+                    threading.Thread(target=send_telegram_message, 
+                                     args=(bot_token, chat_id, "No motion detected for 30 seconds.")).start()
 
                 cv2.imshow("Cam", threshold)
             else: 
                 cv2.imshow("Cam", frame)
 
-            if alarm_counter > 20: 
-                current_time = time.time()
-                if current_time - last_notification_time > notification_cooldown:
-                    threading.Thread(target=beep_alarm, args=(alarm_sound, lambda: alarm_mode_active)).start()
-                    threading.Thread(target=send_telegram_message, args=(bot_token, chat_id, "Motion detected in your room!")).start()
-                    last_notification_time = current_time
-                alarm_counter = 0
-
             key_pressed = cv2.waitKey(30)
             if key_pressed == ord("t"): 
                 alarm_mode_active = not alarm_mode_active
-                alarm_counter = 0
+                motion_detected = False
+                motion_stop_notified = False
             if key_pressed == ord("q"): 
                 break 
 
