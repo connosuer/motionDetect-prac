@@ -99,9 +99,9 @@ def main():
                     threading.Thread(target=send_telegram_message, 
                                      args=(bot_token, chat_id, "No motion detected for 30 seconds.")).start()
 
-                cv2.imshow("Cam", threshold)
+                cv2.imshow("View", threshold)
             else: 
-                cv2.imshow("Cam", frame)
+                cv2.imshow("View", frame)
 
             key_pressed = cv2.waitKey(30)
             if key_pressed == ord("t"): 
